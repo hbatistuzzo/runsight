@@ -9,15 +9,23 @@
 
 ---
 
+## Project Context
+
+This started as a personal project to understand my own running data better. I'm a data scientist / data engineer by trade (oceanography background, long story, check my [profile](https://github.com/hbatistuzzo)), and I was frustrated that Garmin collects all this great data but only shows you the basics.
+
+The whole thing was built with [Claude Code](https://claude.ai/claude-code) using the [Garmin MCP server](https://github.com/Taxuspt/garmin_mcp) for data acquisition. The database was populated through AI-assisted API calls rather than manual CSV exports. If you're curious about MCP (Model Context Protocol) in practice, this is a concrete example of what it looks like when an AI agent interacts with real-world APIs.
+
+---
+
 ## Why does this exist?
 
-I started running at 38. The first few weeks were brutal — mostly walking with some running in between, which is perfectly fine and exactly how it should be done. But Garmin Connect didn't see it that way. It just lumped everything together and told me my average pace was **8:12/km**. Depressing.
+I started running at 38. The first few weeks were brutal, mostly walking with some running in between, which is perfectly fine and exactly how it should be done. But Garmin Connect didn't see it that way. It just lumped everything together and told me my average pace was **8:12/km**. Depressing.
 
-Then I looked closer. Garmin *does* record which segments are running and which are walking (they call them "typed splits"). It just... doesn't use that information to separate the paces. When I did the math myself, my *actual running pace* was **7:28/km**. Walking intervals were dragging the average down by **44 seconds per km**. That's not a rounding error — that's a whole different picture of my fitness.
+Then I looked closer. Garmin *does* record which segments are running and which are walking (they call them "typed splits"). It just... doesn't use that information to separate the paces. When I did the math myself, my *actual running pace* was **7:28/km**. Walking intervals were dragging the average down by **44 seconds per km**. That's a completely different picture of where my fitness actually is.
 
-Then came the heat. I live in Niterói, Brazil 🇧🇷, where a "cool day" in summer means 27°C with 80% humidity. My "worst" runs were always on hot days. Same effort, same heart rate, but the pace looked terrible. Without temperature normalization, every summer run looked like a regression. Garmin records the temperature for every activity — it just doesn't do anything with it.
+Then came the heat. I live in Niterói, Brazil 🇧🇷, where a "cool day" in summer means 27°C with 80% humidity. My "worst" runs were always on hot days. Same effort, same heart rate, but the pace looked terrible. Without temperature normalization, every summer run looked like a regression. Garmin records the temperature for every activity. It just doesn't do anything useful with it.
 
-And my HR zones? Garmin used the `220 - age` formula, giving me a max HR of **182**. My actual max HR turned out to be **199** — that's **17 bpm higher**. Every run I thought was "easy" was actually a threshold run. I was overtraining without knowing it. The `220 - age` formula is a population average from the 1970s, and it's been shown to be off by ±10-20 bpm for individuals. That's not a minor caveat — that's "your entire training plan is wrong" territory.
+And the HR zones? Garmin used the `220 - age` formula, giving me a max HR of **182**. My actual max HR turned out to be **199**, a full **17 bpm higher**. Every run I thought was "easy" was actually a threshold run. I was overtraining without knowing it. The `220 - age` formula is a population average from the 1970s, and it can be off by ±10-20 bpm for any individual. Your entire training plan can be wrong because of this single assumption.
 
 > Garmin records all the data you need to fix these problems. It just doesn't show you the answers.
 
@@ -29,7 +37,7 @@ RunSight does.
 
 - Python 3.10+
 - Click (CLI framework)
-- SQLite (local storage — no cloud, no account, no tracking)
+- SQLite (local storage, no cloud, no account, no tracking)
 - Jinja2 + Chart.js (HTML reports with interactive charts)
 - garminconnect (Garmin API sync)
 
@@ -59,7 +67,7 @@ $ runsight pace 2026-06-20
 
 ### 🔹 Heat-Adjusted Pace
 
-Running at 27°C is physiologically harder than at 20°C — your body diverts blood to the skin for cooling, cardiac output drops, heart rate rises by 10-15 bpm at the same pace. This is well-documented in exercise physiology but Garmin doesn't account for it.
+Running at 27°C is physiologically harder than at 20°C. Your body diverts blood to the skin for cooling, cardiac output drops, heart rate rises by 10-15 bpm at the same pace. This is well-documented in exercise physiology but Garmin doesn't account for it.
 
 RunSight uses a linear regression with HR control to calibrate the penalty (default ~1.5%/°C above 20°C), then shows what your pace *would have been* at a reference temperature:
 
@@ -74,7 +82,7 @@ $ runsight heat
   2026-06-20   8:12/km  7:24/km   27°C   -48s  176
 ```
 
-**Insight:** that "bad" 8:12 run on a 27°C day? Equivalent to 7:24 at 20°C — actually *faster* than the 7:30 run two days earlier. Without this normalization, you'd think you got worse. You didn't. It was just hot.
+**Insight:** that "bad" 8:12 run on a 27°C day? Equivalent to 7:24 at 20°C, actually *faster* than the 7:30 run two days earlier. Without this normalization, you'd think you got worse. You didn't. It was just hot.
 
 ---
 
@@ -107,7 +115,7 @@ $ runsight zones --age 38
 
 ### 🔹 Beginner Milestones
 
-Garmin gives you badges for... buying Garmin products. Meanwhile, your first continuous 5K, your first sub-7:00/km split, your longest run ever, your first week of 3+ runs — none of that gets acknowledged. RunSight detects these milestones from your activity history:
+Garmin gives you badges for... buying Garmin products. Meanwhile, your first continuous 5K, your first sub-7:00/km split, your longest run ever, your first week of 3+ runs: none of that gets acknowledged. RunSight detects these milestones from your activity history:
 
 ```
 $ runsight milestones
@@ -127,7 +135,7 @@ $ runsight milestones
 
 ### 🔹 HTML Progress Report
 
-Generates a self-contained HTML report with interactive Chart.js visualizations: weekly volume, heat-adjusted pace trends, km1 progression (dual-axis with HR). Dark theme. No server needed — just open the file in a browser.
+Generates a self-contained HTML report with interactive Chart.js visualizations: weekly volume, heat-adjusted pace trends, km1 progression (dual-axis with HR). Dark theme. No server needed, just open the file in a browser.
 
 ```
 $ runsight report -o my_progress.html
@@ -166,8 +174,8 @@ runsight report
 
 RunSight supports two ways to get your Garmin data:
 
-- **Direct API** (default): Uses the `garminconnect` Python library. Works standalone — just `pip install` and go.
-- **MCP** (for AI agent users): If you're using [Claude Code](https://claude.ai/claude-code) or another MCP-compatible agent, RunSight can pull data via the [Garmin MCP server](https://github.com/Taxuspt/garmin_mcp). This is actually how I built this project — the entire database was bootstrapped through MCP calls to Garmin's API via Claude Code.
+- **Direct API** (default): Uses the `garminconnect` Python library. Works standalone, just `pip install` and go.
+- **MCP** (for AI agent users): If you're using [Claude Code](https://claude.ai/claude-code) or another MCP-compatible agent, RunSight can pull data via the [Garmin MCP server](https://github.com/Taxuspt/garmin_mcp). This is actually how I built this project: the entire database was bootstrapped through MCP calls to Garmin's API via Claude Code.
 
 ---
 
@@ -183,14 +191,6 @@ RunSight syncs your Garmin Connect data into a local SQLite database, then compu
 All data stays local. No cloud, no account, no tracking. Your running data is yours.
 
 > **Fun fact (aka bug report):** Garmin's API returns temperature in a field called `temperature_celsius`... except the values are actually in Fahrenheit 🤦. RunSight handles the conversion for you.
-
----
-
-## Project Context
-
-This started as a personal project to understand my own running data better. I'm a data scientist / data engineer by trade (oceanography background — long story, check my [profile](https://github.com/hbatistuzzo)), and I was frustrated that Garmin collects all this great data but only shows you the basics.
-
-The whole thing was built with [Claude Code](https://claude.ai/claude-code) using the [Garmin MCP server](https://github.com/Taxuspt/garmin_mcp) for data acquisition — which means the database was populated through AI-assisted API calls rather than manual CSV exports. If you're curious about MCP (Model Context Protocol) in practice, this is a concrete example of what it looks like when an AI agent interacts with real-world APIs.
 
 ---
 
