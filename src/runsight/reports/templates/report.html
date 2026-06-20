@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RunSight — Progress Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #e6edf3;
+                --text2: #8b949e; --green: #3fb950; --blue: #58a6ff; --orange: #d29922;
+                --red: #f85149; --purple: #bc8cff; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--text); font-family: -apple-system, system-ui, sans-serif; padding: 2rem; }
+        h1 { font-size: 1.8rem; margin-bottom: 0.3rem; }
+        h2 { font-size: 1.2rem; color: var(--blue); margin: 2rem 0 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+        .subtitle { color: var(--text2); margin-bottom: 2rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; }
+        .card h3 { font-size: 1rem; color: var(--text2); margin-bottom: 1rem; }
+        .stat { font-size: 2rem; font-weight: 700; color: var(--green); }
+        .stat-label { font-size: 0.85rem; color: var(--text2); }
+        .stat-row { display: flex; gap: 2rem; margin: 0.5rem 0; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th { text-align: left; color: var(--text2); padding: 0.5rem; border-bottom: 1px solid var(--border); font-weight: 500; }
+        td { padding: 0.5rem; border-bottom: 1px solid var(--border); }
+        .pace-real { color: var(--green); font-weight: 600; }
+        .pace-garmin { color: var(--text2); }
+        .milestone { padding: 0.8rem 0; border-bottom: 1px solid var(--border); }
+        .milestone:last-child { border-bottom: none; }
+        .milestone-date { color: var(--text2); font-size: 0.8rem; }
+        .milestone-name { color: var(--blue); font-weight: 600; }
+        .milestone-value { font-size: 0.9rem; }
+        .chart-container { position: relative; height: 250px; }
+        .zone { display: flex; justify-content: space-between; padding: 0.4rem 0.8rem; margin: 0.3rem 0; border-radius: 4px; font-size: 0.9rem; }
+        .z1 { background: #1a3a1a; } .z2 { background: #1a2a3a; } .z3 { background: #3a3a1a; }
+        .z4 { background: #3a2a1a; } .z5 { background: #3a1a1a; }
+        .warn { background: rgba(248,81,73,0.1); border: 1px solid var(--red); border-radius: 6px; padding: 1rem; margin-top: 1rem; font-size: 0.9rem; }
+        .warn strong { color: var(--red); }
+        footer { text-align: center; color: var(--text2); font-size: 0.8rem; margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+    </style>
+</head>
+<body>
+    <h1>RunSight</h1>
+    <p class="subtitle">Running analytics Garmin won't show you</p>
+
+    <!-- Summary Cards -->
+    <div class="grid">
+        <div class="card">
+            <h3>Total Runs</h3>
+            <div class="stat">{{ activities|length }}</div>
+            <div class="stat-label">{{ activities[0].date if activities else '—' }} → {{ activities[-1].date if activities else '—' }}</div>
+        </div>
+        <div class="card">
+            <h3>Total Distance</h3>
+            <div class="stat">{{ "%.1f"|format(activities|sum(attribute='km')) }} km</div>
+            <div class="stat-label">~{{ "%.1f"|format(activities|sum(attribute='km') / (weekly|length or 1)) }} km/week average</div>
+        </div>
+        <div class="card">
+            <h3>Milestones Achieved</h3>
+            <div class="stat">{{ milestones|length }}</div>
+            <div class="stat-label">{% if milestones %}Latest: {{ milestones[-1].name }}{% endif %}</div>
+        </div>
+    </div>
+
+    <!-- Weekly Volume Chart -->
+    <h2>Weekly Volume</h2>
+    <div class="card">
+        <div class="chart-container">
+            <canvas id="weeklyChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Walk-Filtered Pace -->
+    {% if walk_data %}
+    <h2>Walk-Filtered Pace — Your REAL Running Pace</h2>
+    <div class="card">
+        <p style="color: var(--text2); margin-bottom: 1rem; font-size: 0.9rem;">
+            Garmin blends running and walking into one average. For run/walk training, this makes you look slower than you are.
+            The "Real Pace" column shows your actual running pace with walking segments removed.
+        </p>
+        <table>
+            <tr><th>Date</th><th>Garmin Shows</th><th>Real Pace</th><th>Walk %</th><th>Pace Drag</th></tr>
+            {% for r in walk_data %}
+            <tr>
+                <td>{{ r.date }}</td>
+                <td class="pace-garmin">{{ r.blended_str }}/km</td>
+                <td class="pace-real">{{ r.running_str }}/km</td>
+                <td>{{ r.walk_pct|round|int }}%</td>
+                <td>{% if r.pace_gap_s_km and r.pace_gap_s_km > 0 %}+{{ r.pace_gap_s_km|int }}s{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Heat-Adjusted Pace -->
+    {% if heat_data %}
+    <h2>Heat-Adjusted Pace — What You'd Run at 20°C</h2>
+    <div class="card">
+        <p style="color: var(--text2); margin-bottom: 1rem; font-size: 0.9rem;">
+            Heat adds ~{{ heat_penalty }}%/°C to your pace above 20°C. Your hot-day runs aren't regressions — they're harder conditions.
+        </p>
+        <div class="chart-container">
+            <canvas id="heatChart"></canvas>
+        </div>
+        <table style="margin-top: 1rem;">
+            <tr><th>Date</th><th>Actual</th><th>@20°C</th><th>Temp</th><th>HR</th></tr>
+            {% for r in heat_data %}
+            <tr>
+                <td>{{ r.date }}</td>
+                <td>{{ r.actual_str }}/km</td>
+                <td class="pace-real">{{ r.adjusted_str }}/km</td>
+                <td>{{ r.temperature_c|round|int }}°C</td>
+                <td>{{ r.avg_hr }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Km 1 Progression -->
+    {% if km1_progression %}
+    <h2>First Kilometer Progression</h2>
+    <div class="card">
+        <div class="chart-container">
+            <canvas id="km1Chart"></canvas>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- HR Zones -->
+    {% if zones %}
+    <h2>Heart Rate Zones — Karvonen Method</h2>
+    <div class="card">
+        <div class="stat-row">
+            <div><span class="stat-label">Max HR</span><br><strong>{{ zones.max_hr }} bpm</strong></div>
+            <div><span class="stat-label">Resting HR</span><br><strong>{{ zones.resting_hr }} bpm</strong></div>
+            <div><span class="stat-label">HRR</span><br><strong>{{ zones.hrr }} bpm</strong></div>
+            <div><span class="stat-label">Source</span><br><strong>{{ zones.max_hr_source }}</strong></div>
+        </div>
+        {% for (low, high), name in zip(zones.zone_boundaries, zones.zone_names) %}
+        <div class="zone z{{ loop.index }}">
+            <span>Zone {{ loop.index }} — {{ name }}</span>
+            <span>{{ low }} – {{ high }} bpm</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Milestones -->
+    {% if milestones %}
+    <h2>Milestones</h2>
+    <div class="card">
+        {% for m in milestones %}
+        <div class="milestone">
+            <div class="milestone-date">{{ m.date }}</div>
+            <div class="milestone-name">{{ m.name }}</div>
+            <div class="milestone-value">{{ m.value }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <footer>
+        Generated by <strong>RunSight</strong> — running analytics Garmin won't show you.
+        <br>Open source: github.com/hbatistuzzo/runsight
+    </footer>
+
+    <script>
+    // Weekly volume
+    {% if weekly %}
+    new Chart(document.getElementById('weeklyChart'), {
+        type: 'bar',
+        data: {
+            labels: [{% for w in weekly %}'{{ w.week }}'{% if not loop.last %},{% endif %}{% endfor %}],
+            datasets: [{
+                label: 'km/week',
+                data: [{% for w in weekly %}{{ w.km }}{% if not loop.last %},{% endif %}{% endfor %}],
+                backgroundColor: '#3fb95080',
+                borderColor: '#3fb950',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, grid: { color: '#30363d' }, ticks: { color: '#8b949e' } },
+                      x: { grid: { display: false }, ticks: { color: '#8b949e' } } }
+        }
+    });
+    {% endif %}
+
+    // Heat-adjusted pace
+    {% if heat_data %}
+    new Chart(document.getElementById('heatChart'), {
+        type: 'line',
+        data: {
+            labels: [{% for r in heat_data %}'{{ r.date }}'{% if not loop.last %},{% endif %}{% endfor %}],
+            datasets: [{
+                label: 'Actual pace (s/km)',
+                data: [{% for r in heat_data %}{{ r.actual_pace_s_km }}{% if not loop.last %},{% endif %}{% endfor %}],
+                borderColor: '#8b949e', borderWidth: 1.5, pointRadius: 3, fill: false, tension: 0.1
+            }, {
+                label: 'Heat-adjusted (s/km)',
+                data: [{% for r in heat_data %}{{ r.adjusted_pace_s_km }}{% if not loop.last %},{% endif %}{% endfor %}],
+                borderColor: '#3fb950', borderWidth: 2, pointRadius: 3, fill: false, tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#e6edf3' } } },
+            scales: {
+                y: { reverse: true, grid: { color: '#30363d' }, ticks: { color: '#8b949e',
+                    callback: function(v) { return Math.floor(v/60) + ':' + String(Math.floor(v%60)).padStart(2,'0'); }
+                }},
+                x: { grid: { display: false }, ticks: { color: '#8b949e', maxRotation: 45 } }
+            }
+        }
+    });
+    {% endif %}
+
+    // Km 1 progression
+    {% if km1_progression %}
+    new Chart(document.getElementById('km1Chart'), {
+        type: 'line',
+        data: {
+            labels: [{% for k in km1_progression %}'{{ k.date }}'{% if not loop.last %},{% endif %}{% endfor %}],
+            datasets: [{
+                label: 'Km 1 pace (s/km)',
+                data: [{% for k in km1_progression %}{{ k.pace_s_km }}{% if not loop.last %},{% endif %}{% endfor %}],
+                borderColor: '#58a6ff', borderWidth: 2, pointRadius: 3, fill: false, tension: 0.1
+            }, {
+                label: 'Km 1 avg HR',
+                data: [{% for k in km1_progression %}{{ k.avg_hr }}{% if not loop.last %},{% endif %}{% endfor %}],
+                borderColor: '#f8514980', borderWidth: 1.5, pointRadius: 2, fill: false, tension: 0.1,
+                yAxisID: 'hr'
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#e6edf3' } } },
+            scales: {
+                y: { position: 'left', reverse: true, grid: { color: '#30363d' }, ticks: { color: '#58a6ff',
+                    callback: function(v) { return Math.floor(v/60) + ':' + String(Math.floor(v%60)).padStart(2,'0'); }
+                }},
+                hr: { position: 'right', grid: { display: false }, ticks: { color: '#f85149' },
+                      min: 130, max: 200 },
+                x: { grid: { display: false }, ticks: { color: '#8b949e', maxRotation: 45 } }
+            }
+        }
+    });
+    {% endif %}
+    </script>
+</body>
+</html>
